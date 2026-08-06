@@ -1,5 +1,6 @@
 import re 
 import urllib.request
+import urllib.error
 import json
 
 
@@ -33,7 +34,16 @@ def parse_issue(url: str) -> dict:
             issue["title"] = data.get("title", issue["title"])
             issue["body"] = data.get("body", "")
 
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            issue["title"] = "(not found - check the URL or repo is private)"
+        elif e.code == 403:
+            issue["title"] = "(Github API rate limit hit - continuing anyway)"
+        else:
+            issue["title"] = f"(Github API returned {e.code})"
+    except urllib.error.URLError:
+        issue["title"] = "(no internet connection - continuing anyway)"
     except Exception:
         pass
-
+    
     return issue
