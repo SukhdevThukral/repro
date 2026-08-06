@@ -1,9 +1,31 @@
 import os 
+import shutil
 import subprocess
 
+class DockerNotFoundError(Exception):
+    pass
 
+class DockerNotRunningError(Exception):
+    pass
+
+def check_docker_available():
+    """Verify Docker CLI exists and the daemon is reachable before trying anythg"""
+    if shutil.whaich("docker") is None:
+        raise DockerNotFoundError(
+            "Docker is not installed or not on your PATH.\n"
+            "   Install it from: https://docs.docker.com/get-docker/"
+        )
+
+    result = subprocess.run(["docker", "info"], capture_output=True, text=True)
+    if result.returncode != 0:
+        raise DockerNotRunningError(
+            "Docker is installed but the daemon isnt running.\n"
+            "   Start Docker Desktop and wait for the icon to go steady, then try again."
+        )
 
 def run_sandbox(issue: dict, runtime: dict):
+    check_docker_available()
+
     owner = issue["owner"]
     repo = issue["repo"]
     number = issue["number"]
@@ -29,13 +51,19 @@ def run_sandbox(issue: dict, runtime: dict):
     ]
 
     print(f"Starting sandbox for {owner}/{repo} issue #{number}")
-    print("     (container will be deleted automaticallyh when you exit)\n")
+    print("     (container will be deleted automatically when you exit)\n")
+
+    env = os.environ.copy()
+    env["DOCKER_CLI_HINTS"] = "false"
 
     try:
-        subprocess.run(args, stdin=None, check=False)
-    except FileNotFoundError:
-        print("error: Docker not found. Please install Docker: https://docs.docker.com/get-docker/")
-        raise
+        result = subprocess.run(args, env=env)
+    except KeyboardInterrupt:
+        print("Interrupted - cleaning up the sandbox...")
+        return
+    if result.returncode not in (0,130):
+        print(f"Sandbox exited with code {result.returncode} - check the output above.")
+        return
 
     print("\n Sandbox destroyed. Back to reality.")
 
