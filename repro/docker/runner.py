@@ -17,8 +17,8 @@ def run_sandbox(issue: dict, runtime: dict):
     args = [
         "docker", "run",
         "--rm",
-        "--interactive"
-        "--tty"
+        "-i",
+        "-t",
         "--name", container_name,
         "--hostname", f"sandbox-issue-{number}",
         "-e", f"ISSUE_NUMBER={number}",
@@ -48,12 +48,11 @@ def build_startup_script(repo_url:str, work_dir: str, install_cmd: str, issue_nu
 
     return " && ".join([
         "set -e",
-        "which git > /dev/null 2>&1 || (apt-get update -qq && apt-get install -y -qq git curl)",
+        "which git > /dev/null 2>&1 || (apk add --no-cache git curl)",
         'echo ""',
-        'echo "╔════════════════════════════════════════╗"',
-        'echo" ║       🏖  DevSandbox                   ║"',
-        f'echo"║  Issue: #{issue_number:<31}            ║"',
-        'echo "╚════════════════════════════════════════╝"',
+        'echo "=================================="',
+        f'echo "  DevSandbox - Issue #{issue_number}"',
+        'echo "=================================="',
         'echo ""',
         f'echo "Cloning repo..."',
         f"git clone --depth=1 {repo_url} {work_dir} 2>&1 | tail -1",
