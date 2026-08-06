@@ -2,7 +2,7 @@ import sys
 from repro import __version__
 from repro.github.issue import parse_issue
 from repro.detector.detector import detect_runtime, universal
-from repro.docker.runner import run_sandbox
+from repro.docker.runner import run_sandbox, DockerNotRunningError, DockerNotFoundError
 
 
 
@@ -27,9 +27,13 @@ def main():
 def run(issue_url: str):
 
     # Parsing the issue
-
     print("Fetching issue info...")
-    issue = parse_issue(issue_url)
+    try:
+        issue = parse_issue(issue_url)
+    except ValueError as e:
+        print(f"error: {e}")
+        sys.exit(1)
+
     print(f"ISSUE #{issue['number']}: {issue['title']}")
     print(f"REPO: {issue['owner']}/{issue['repo']}\n")
 
@@ -43,8 +47,14 @@ def run(issue_url: str):
     print(f"Detected: {runtime['name']} (image: {runtime['image']})\n")
 
     print(" Spinning up sandbox...")
-    run_sandbox(issue, runtime)
-
+    try:
+        run_sandbox(issue, runtime)
+    except DockerNotFoundError as e:
+        print(f"\n❌ {e}")
+        sys.exit(1)
+    except DockerNotRunningError as e:
+        print(f"\n❌ {e}")
+        sys.exit(1)
 
 def print_usage():
     print("""repro - disposable Docker environments for GitHub issues
@@ -58,4 +68,4 @@ Examples:
     python repro.py https://github.com/org/repo/issues/42
     python repro.py https://github.com/golang/go/issues/1234
     """
-    )
+)
