@@ -1,4 +1,5 @@
 import urllib.request
+import urllib.error
 import json
 
 KNOWN_FILES = [
@@ -19,12 +20,15 @@ KNOWN_FILES = [
 def universal() -> dict:
     return {"name":"universal", "image": "ubuntu:22.04", "install": ""}
 
-def detect_runtime(owner: str, repo: str) -> dict | None:
+def detect_runtime(owner: str, repo: str, token: str = None) -> dict | None:
     api_url = f"https://api.github.com/repos/{owner}/{repo}/contents/"
+    headers={"User-Agent": "repro/0.1.0", "Accept": "applications/vnd.github+json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
     try: 
         req = urllib.request.Request(
             api_url,
-            headers={"User-Agent": "repro/0.1.0", "Accept": "applications/vnd.github+json"},
+            headers=headers
         )
         with urllib.request.urlopen(req, timeout=10) as resp:
             contents = json.loads(resp.read())
