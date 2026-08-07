@@ -24,7 +24,7 @@ def parse_issue(url: str, token: str = None) -> dict:
     # trying github api, for public repos without auth
 
     api_url = f"https://api.github.com/repos/{owner}/{repo}/issues/{number}"
-    headers = {"User-Agent": "repr/0.1.0", "Accept": "applications/vnd.github+json"}
+    headers = {"User-Agent": "repro/0.1.0", "Accept": "applications/vnd.github+json"}
 
     if token:
         headers["Authorization"] = f"Bearer {token}"
