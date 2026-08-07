@@ -1,5 +1,6 @@
 import os 
 import shutil
+import re
 import subprocess
 
 class DockerNotFoundError(Exception):
@@ -10,6 +11,11 @@ class DockerNotRunningError(Exception):
 
 class InvalidPortError(Exception):
     pass
+
+class InvalidRepoError(Exception):
+    pass
+
+SAFE_NAME = re.compile(r"^[A-Za-z0-9._-]+$")
 
 def check_docker_available():
     """Verify Docker CLI exists and the daemon is reachable before trying anythg"""
@@ -25,6 +31,16 @@ def check_docker_available():
             "Docker is installed but the daemon isnt running.\n"
             "   Start Docker Desktop and wait for the icon to go steady, then try again."
         )
+
+def validate_repo_identifiers(owner: str, repo:str):
+    """ Guard against shell injection -> owner/repo gets interpolated into a shell command, so anything outside GitHub's allowed charst is rejected 
+    before it even reaches da subprocess"""
+    if not SAFE_NAME.match(owner):
+        raise InvalidRepoError(f'invalid owner"{owner}" - contains disallowed characters')
+    if not SAFE_NAME.match(repo):
+        raise InvalidRepoError(f'invalid repo name "{repo}" - contains disallowed characters')
+
+
 def parse_port_spec(spec: str) -> tuple[int, int]:
     """ Parse a --port value into (host_port, container_port).
         Accepts "3000" (same both sides) or "8080:3000" (host:container).
@@ -47,7 +63,7 @@ def parse_port_spec(spec: str) -> tuple[int, int]:
 
     return int(host), int(container)
 
-def run_sandbox(issue: dict, runtime: dict, ports: list =None):
+def run_sandbox(issue: dict, runtime: dict, ports: list =None, token: str = None):
     check_docker_available()
     ports = ports or []
 
@@ -55,11 +71,18 @@ def run_sandbox(issue: dict, runtime: dict, ports: list =None):
     repo = issue["repo"]
     number = issue["number"]
 
-    repo_url = f"https://github.com/{owner}/{repo}.git"
+    validate_repo_identifiers(owner, repo)
+
+    if not isinstance(number, int):
+        raise InvalidRepoError("issue number must be an integer")
+
+    clone_url_public = f"https://github.com/{owner}/{repo}.git"
+    clone_url_auth = f"https://{token}@github.com/{owner}/{repo}.git" if token else clone_url_public
+
     work_dir = f"/sandbox/{repo}"
     container_name = f"repro-{owner}-{repo}-{number}"
 
-    startup_script = build_startup_script(repo_url, work_dir, runtime["install"], number, ports)
+    startup_script = build_startup_script(clone_url_auth, clone_url_public, work_dir, runtime["install"], number, ports)
 
     args = [
         "docker", "run",
@@ -89,13 +112,14 @@ def run_sandbox(issue: dict, runtime: dict, ports: list =None):
     except KeyboardInterrupt:
         print("Interrupted - cleaning up the sandbox...")
         return
+    
     if result.returncode not in (0,130):
         print(f"Sandbox exited with code {result.returncode} - check the output above.")
         return
 
     print("\n Sandbox destroyed. Back to reality.")
 
-def build_startup_script(repo_url, work_dir, install_cmd, issue_number, ports) -> str:
+def build_startup_script(clone_url_auth, clone_url_public, work_dir, install_cmd, issue_number, ports) -> str:
     install_step = (
         f'echo "Installing dependencies....." && {install_cmd}'
         if install_cmd
@@ -111,8 +135,8 @@ def build_startup_script(repo_url, work_dir, install_cmd, issue_number, ports) -
         'echo "=================================="',
         'echo ""',
         f'echo "Cloning repo..."',
-        f"git clone --depth=1 {repo_url} {work_dir} 2>&1 | tail -1",
-        f"cd {work_dir}",
+        f"git clone --depth=1 {clone_url_auth} {work_dir} 2>&1 | tail -5",
+        f"cd {work_dir} && git remote set-url origin {clone_url_public}",
         install_step,
         'echo ""',
         f'echo "Ready! You are in: {work_dir}"',
