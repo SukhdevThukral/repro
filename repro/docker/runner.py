@@ -2,6 +2,7 @@ import os
 import shutil
 import re
 import subprocess
+import tempfile
 
 class DockerNotFoundError(Exception):
     pass
@@ -35,10 +36,13 @@ def check_docker_available():
 def validate_repo_identifiers(owner: str, repo:str):
     """ Guard against shell injection -> owner/repo gets interpolated into a shell command, so anything outside GitHub's allowed charst is rejected 
     before it even reaches da subprocess"""
-    if not SAFE_NAME.match(owner):
-        raise InvalidRepoError(f'invalid owner"{owner}" - contains disallowed characters')
-    if not SAFE_NAME.match(repo):
-        raise InvalidRepoError(f'invalid repo name "{repo}" - contains disallowed characters')
+    for label, value in (("owner", owner), ("repo", repo)):
+        if not SAFE_NAME.match(value):
+            raise InvalidRepoError(f'invalid {label} "{value}" - contains disallowed characters')
+        if value in (".", ".."):
+            raise InvalidRepoError(f'invalid {label} "{value}"')
+        if value.startswith("."):
+            raise InvalidRepoError(f'invalid {label} "{value}" - cannot start with a dot')
 
 
 def parse_port_spec(spec: str) -> tuple[int, int]:
@@ -82,7 +86,7 @@ def run_sandbox(issue: dict, runtime: dict, ports: list =None, token: str = None
     work_dir = f"/sandbox/{repo}"
     container_name = f"repro-{owner}-{repo}-{number}"
 
-    startup_script = build_startup_script(clone_url_auth, clone_url_public, work_dir, runtime["install"], number, ports)
+    startup_script = build_startup_script(clone_url_auth, clone_url_public, work_dir, runtime["install"], number, ports, has_token=bool(token))
 
     args = [
         "docker", "run",
@@ -97,7 +101,20 @@ def run_sandbox(issue: dict, runtime: dict, ports: list =None, token: str = None
     ]
 
     for host_port, container_port in ports:
-        args += ["-p", f"{host_port}:{container_port}"]
+        args += ["-p", f"127.0.0.1:{host_port}:{container_port}"]
+
+    env_file_path = None
+    if token:
+        #writing the toekn to a temp file passed via --env-fle instead of -e/embedded-in-command
+        fd, env_file_path = tempfile.mkstemp(prefix="repro-", suffix=".env")
+        try:
+            os.chmod(env_file_path, 0o600)
+            with os.fdopen(fd, "w") as f:
+                f.write(f"GIT_TOKEN={token}\n")
+        except Exception:
+            if os.path.exists(env_file_path):
+                os.remove(env_file_path)
+            raise
 
     args += [runtime["image"], "sh", "-c", startup_script]
 
@@ -126,6 +143,14 @@ def build_startup_script(clone_url_auth, clone_url_public, work_dir, install_cmd
         else 'echo "No install step, dropping into shell... "'
     )
 
+    host_and_path = clone_url_public[len("https://"):]
+    clone_cmd = (
+        f'if [ -n "$GIT_TOEKN" ]; then '
+        f'CLONE_URL="https://${{GIT_TOKEN}}@{host_and_path}";'
+        f'else CLONE_URL="{clone_url_public}"; fi && '
+        f'git clone --depth=1 "$CLONE_URL" {work_dir} 2>&1 | tail -5'
+    )
+
     lines = [
         "set -e",
         "which git > /dev/null 2>&1 || (apk add --no-cache git curl)",
@@ -135,8 +160,9 @@ def build_startup_script(clone_url_auth, clone_url_public, work_dir, install_cmd
         'echo "=================================="',
         'echo ""',
         f'echo "Cloning repo..."',
+        clone_cmd,
         f"git clone --depth=1 {clone_url_auth} {work_dir} 2>&1 | tail -5",
-        f"cd {work_dir} && git remote set-url origin {clone_url_public}",
+        f"cd {work_dir} && git remote set-url origin {clone_url_public} && unset GIT_TOKEN",
         install_step,
         'echo ""',
         f'echo "Ready! You are in: {work_dir}"',
