@@ -1,0 +1,29 @@
+# Secrets
+.env
+app/.env
+app/private-key.pem
+/package.json
+/package-lock.json
+
+
+# Node
+node_modules/
+app/node_modules/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/

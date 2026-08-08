@@ -1,0 +1,19 @@
+{
+  "name": "repro-app",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "probot run ./index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "probot": "^14.3.2"
+  },
+  "devDependencies": {
+    "smee-client": "^5.0.0"
+  }
+}
