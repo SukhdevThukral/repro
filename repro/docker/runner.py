@@ -3,6 +3,8 @@ import shutil
 import re
 import subprocess
 import tempfile
+import threading
+import time
 
 class DockerNotFoundError(Exception):
     pass
@@ -32,6 +34,7 @@ def check_docker_available():
             "Docker is installed but the daemon isnt running.\n"
             "   Start Docker Desktop and wait for the icon to go steady, then try again."
         )
+
 
 def validate_repo_identifiers(owner: str, repo:str):
     """ Guard against shell injection -> owner/repo gets interpolated into a shell command, so anything outside GitHub's allowed charst is rejected 
@@ -67,6 +70,46 @@ def parse_port_spec(spec: str) -> tuple[int, int]:
 
     return int(host), int(container)
 
+def has_devcontainers_extension() -> bool:
+    """Check if VS Code's DEV containers extension is installed"""
+    try:
+        result = subprocess.run(
+            ["code", "--list-extensions"],
+            capture_output=True, text=True, timeout=5,
+            shell=(os.name == "nt"),
+        )
+        return "ms-vscode-remote.remote-containers" in result.stdout
+    except Exception:
+        return False
+
+def attach_vscode_to_container(container_name: str, work_dir:str):
+    for _ in range(20):
+        result = subprocess.run(
+            ["docker", "inspect", "--format", "{{.State.Runnning}}", container_name],
+            capture_output=True, text=True,
+        )
+        if result.returncode == 0 and result.stdout.strip() == "true":
+            break
+        time.sleep(0.5)
+    else:
+        return
+
+    id_result = subprocess.run(
+        ["docker", "inspect", "--format", "{{.State.Running}}", container_name],
+        capture_output=True, text=True,
+    )
+    if id_result.returncode != 0:
+        return
+
+    container_id =  id_result.stdout.strip()
+    hex_id = container_id.encode().hex()
+    uri = f"vscode-remote://attached-container+{hex_id}{work_dir}"
+
+    try:
+        subprocess.Popen(["code", "--folder-uri", uri], shell=(os.name=="nt"))
+    except Exception:
+        pass
+
 def run_sandbox(issue: dict, runtime: dict, ports: list =None, token: str = None, no_editor: bool = False):
     check_docker_available()
     ports = ports or []
@@ -89,13 +132,16 @@ def run_sandbox(issue: dict, runtime: dict, ports: list =None, token: str = None
     print(f"📁 Sandbox files will live at: {host_dir}")
     print("     (this folder survives after you exit - edit here with your own editor)\n")
 
+    editor_mode = None
     if not no_editor and shutil.which("code"):
-        print("🖊️ Opening in VS Code...\n")
-        try:
-            subprocess.Popen(["code", host_dir], shell=(os.name=="nt"))
-        except Exception as e:
-            print(f"Couldn't auto-open VS Code: {e}\n")
-
+        if has_devcontainers_extension():
+            editor_mode="attached"
+            print("🖊️  VS Code will attach directly to the container once it's up...")
+            print("   (its built-in terminal will run INSIDE the sandbox — one window, no split)\n")
+        else:
+            editor_mode= "folder"
+            print("🖊️  Opening the folder in VS Code (editing only)...")
+            print("   💡 Install the 'Dev Containers' extension for a fully unified terminal.\n")
     elif not no_editor:
         print("💡 Tip: install VS Code's 'code' CLI command to auto-open the sandbox folder.\n")
 
@@ -133,23 +179,42 @@ def run_sandbox(issue: dict, runtime: dict, ports: list =None, token: str = None
 
     args += [runtime["image"], "sh", "-c", startup_script]
 
-    print(f"Starting sandbox for {owner}/{repo} issue #{number}")
+    print(f"🚀 Starting sandbox for {owner}/{repo} issue #{number}")
     print("     (container will be deleted automatically when you exit)\n")
 
     env = os.environ.copy()
     env["DOCKER_CLI_HINTS"] = "false"
 
-    try:
-        result = subprocess.run(args, env=env)
-    except KeyboardInterrupt:
-        print("Interrupted - cleaning up the sandbox...")
-        return
-    
-    if result.returncode not in (0,130):
-        print(f"Sandbox exited with code {result.returncode} - check the output above.")
-        return
+    if editor_mode == "attached":
+        threading.Thread(
+            target=attach_vscode_to_container,
+            args=(container_name, work_dir),
+            daemon=True,
+        ).start()
+    elif editor_mode == "folder":
+        try:
+            subprocess.Popen(["code", host_dir], shell=(os.name=="nt"))
+        except Exception as e:
+            print(f"⚠️  Couldn't auto-open VS Code: {e}\n")
 
-    print("\n Sandbox destroyed. Back to reality.")
+    try:
+        try:
+            result = subprocess.run(args, env=env)
+        except KeyboardInterrupt:
+            print("Interrupted - cleaning up the sandbox...")
+            return
+        
+        if result.returncode not in (0,130):
+            print(f"Sandbox exited with code {result.returncode} - check the output above.")
+            return
+
+        print("\n Sandbox destroyed. Back to reality.")
+
+    finally:
+        if env_file_path and os.path.exists(env_file_path):
+            os.remove(env_file_path)
+    print(f"📁 Your files are still here: {host_dir}")
+    print("   (delete manually whenever you're done)")
 
 def build_startup_script(clone_url_public, work_dir, install_cmd, issue_number, ports, has_token: bool = False) -> str:
     install_step = (
@@ -171,7 +236,7 @@ def build_startup_script(clone_url_public, work_dir, install_cmd, issue_number, 
         "which git > /dev/null 2>&1 || (apk add --no-cache git curl)",
         'echo ""',
         'echo "=================================="',
-        f'echo "  DevSandbox - Issue #{issue_number}"',
+        f'echo "  Repro - Issue #{issue_number}"',
         'echo "=================================="',
         'echo ""',
         f'echo "Cloning repo..."',
