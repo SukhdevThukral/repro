@@ -67,7 +67,7 @@ def parse_port_spec(spec: str) -> tuple[int, int]:
 
     return int(host), int(container)
 
-def run_sandbox(issue: dict, runtime: dict, ports: list =None, token: str = None):
+def run_sandbox(issue: dict, runtime: dict, ports: list =None, token: str = None, no_editor: bool = False):
     check_docker_available()
     ports = ports or []
 
@@ -81,12 +81,25 @@ def run_sandbox(issue: dict, runtime: dict, ports: list =None, token: str = None
         raise InvalidRepoError("issue number must be an integer")
 
     clone_url_public = f"https://github.com/{owner}/{repo}.git"
-    clone_url_auth = f"https://{token}@github.com/{owner}/{repo}.git" if token else clone_url_public
-
     work_dir = f"/sandbox/{repo}"
     container_name = f"repro-{owner}-{repo}-{number}"
 
-    startup_script = build_startup_script(clone_url_auth, clone_url_public, work_dir, runtime["install"], number, ports, has_token=bool(token))
+    host_dir = tempfile.mkdtemp(prefix=f"repro-{owner}-{repo}-{number}-")
+
+    print(f"📁 Sandbox files will live at: {host_dir}")
+    print("     (this folder survives after you exit - edit here with your own editor)\n")
+
+    if not no_editor and shutil.which("code"):
+        print("🖊️ Opening in VS Code...\n")
+        try:
+            subprocess.Popen(["code", host_dir], shell=(os.name=="nt"))
+        except Exception as e:
+            print(f"Couldn't auto-open VS Code: {e}\n")
+
+    elif not no_editor:
+        print("💡 Tip: install VS Code's 'code' CLI command to auto-open the sandbox folder.\n")
+
+    startup_script = build_startup_script(clone_url_public, work_dir, runtime["install"], number, ports, has_token=bool(token))
 
     args = [
         "docker", "run",
@@ -95,6 +108,7 @@ def run_sandbox(issue: dict, runtime: dict, ports: list =None, token: str = None
         "-t",
         "--name", container_name,
         "--hostname", f"sandbox-issue-{number}",
+        "-v", f"{host_dir}:{work_dir}",
         "-e", f"ISSUE_NUMBER={number}",
         "-e", f"REPO={owner}/{repo}",
         "-e", "TERM=xterm-256color",
@@ -111,6 +125,7 @@ def run_sandbox(issue: dict, runtime: dict, ports: list =None, token: str = None
             os.chmod(env_file_path, 0o600)
             with os.fdopen(fd, "w") as f:
                 f.write(f"GIT_TOKEN={token}\n")
+            args+=["--env-file", env_file_path]
         except Exception:
             if os.path.exists(env_file_path):
                 os.remove(env_file_path)
@@ -136,7 +151,7 @@ def run_sandbox(issue: dict, runtime: dict, ports: list =None, token: str = None
 
     print("\n Sandbox destroyed. Back to reality.")
 
-def build_startup_script(clone_url_auth, clone_url_public, work_dir, install_cmd, issue_number, ports) -> str:
+def build_startup_script(clone_url_public, work_dir, install_cmd, issue_number, ports, has_token: bool = False) -> str:
     install_step = (
         f'echo "Installing dependencies....." && {install_cmd}'
         if install_cmd
@@ -161,7 +176,6 @@ def build_startup_script(clone_url_auth, clone_url_public, work_dir, install_cmd
         'echo ""',
         f'echo "Cloning repo..."',
         clone_cmd,
-        f"git clone --depth=1 {clone_url_auth} {work_dir} 2>&1 | tail -5",
         f"cd {work_dir} && git remote set-url origin {clone_url_public} && unset GIT_TOKEN",
         install_step,
         'echo ""',
