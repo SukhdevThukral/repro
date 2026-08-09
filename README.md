@@ -21,8 +21,8 @@ pip install repro-cli
 **Requirements:**
 - Python 3.9+
 - [Docker](https://docs.docker.com/get-docker/) (INSTALLED AND RUNNING)
-- [VS Code] (optional, but recommended - enables the unified editor/terminal experience below)
-
+- VS Code (optional, but recommended - enables the unified editor/terminal experience below)
+ 
 ---
 
 ## Usage
