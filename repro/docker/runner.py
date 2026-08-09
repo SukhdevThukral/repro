@@ -70,6 +70,8 @@ def parse_port_spec(spec: str) -> tuple[int, int]:
 
     return int(host), int(container)
 
+DEVCONTAINERS_EXT_ID = "ms-vscode-remote.remote-containers"
+
 def has_devcontainers_extension() -> bool:
     """Check if VS Code's DEV containers extension is installed"""
     try:
@@ -78,14 +80,31 @@ def has_devcontainers_extension() -> bool:
             capture_output=True, text=True, timeout=5,
             shell=(os.name == "nt"),
         )
-        return "ms-vscode-remote.remote-containers" in result.stdout
+        return DEVCONTAINERS_EXT_ID in result.stdout
     except Exception:
+        return False
+
+def install_devcontainers_extension() -> bool:
+    print("📦 Installing VS Code's 'Dev Containers' extension (one-time setup)...")
+    try:
+        result = subprocess.run(
+            ["code", "--install-extension", DEVCONTAINERS_EXT_ID],
+            capture_output=True, text=True, timeout=60,
+            shell=(os.name=="nt")
+        )
+        if result.returncode == 0:
+            print("✅ Dev Containers extension installed.\n")
+            return True
+        print("⚠️  Couldn't auto-install the extension. Falling back to folder mode.\n")
+        return False
+    except Exception as e:
+        print(f"⚠️  Couldn't auto-install the extension ({e}). Falling back to folder mode.\n")
         return False
 
 def attach_vscode_to_container(container_name: str, work_dir:str):
     for _ in range(20):
         result = subprocess.run(
-            ["docker", "inspect", "--format", "{{.State.Runnning}}", container_name],
+            ["docker", "inspect", "--format", "{{.State.Running}}", container_name],
             capture_output=True, text=True,
         )
         if result.returncode == 0 and result.stdout.strip() == "true":
@@ -95,7 +114,7 @@ def attach_vscode_to_container(container_name: str, work_dir:str):
         return
 
     id_result = subprocess.run(
-        ["docker", "inspect", "--format", "{{.State.Running}}", container_name],
+        ["docker", "inspect", "--format", "{{.Id}}", container_name],
         capture_output=True, text=True,
     )
     if id_result.returncode != 0:
@@ -134,6 +153,9 @@ def run_sandbox(issue: dict, runtime: dict, ports: list =None, token: str = None
 
     editor_mode = None
     if not no_editor and shutil.which("code"):
+        if not has_devcontainers_extension():
+            install_devcontainers_extension()
+            
         if has_devcontainers_extension():
             editor_mode="attached"
             print("🖊️  VS Code will attach directly to the container once it's up...")
@@ -225,7 +247,7 @@ def build_startup_script(clone_url_public, work_dir, install_cmd, issue_number, 
 
     host_and_path = clone_url_public[len("https://"):]
     clone_cmd = (
-        f'if [ -n "$GIT_TOEKN" ]; then '
+        f'if [ -n "$TOKEN" ]; then '
         f'CLONE_URL="https://${{GIT_TOKEN}}@{host_and_path}";'
         f'else CLONE_URL="{clone_url_public}"; fi && '
         f'git clone --depth=1 "$CLONE_URL" {work_dir} 2>&1 | tail -5'
