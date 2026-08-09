@@ -30,24 +30,35 @@ pip install repro-cli
 ```bash
 # Open a sandbox for any publish GitHub issue
 repro https://github.com/org/repo/issues/123
+```
 
+```bash
 #Forward a port (e.g. to view a web app running inside the sandbox)
 repro https://github.com/org/repo/issues/123 -p 3000
+```
 
+```bash
 # Map a different host port to a container port
 repro https://github.com/org/repo/issues/123 -p 8080:3000
+```
 
+```bash
 # Private repos - pass a GitHub token
 repro https://github.com/org/private-repo/issues/7 --token ghp_xxx
+```
 
+```bash
 #Or set it once as an env var instead of typing it every single time!
 export DEVSANDBOX_GITHUB_TOKEN=ghp_xxx
 repro https://github.com/org/private-repo/issues/7
+```
 
+```bash
 # Skip auto-opening an editor
 repro https://github.com/org/repo/issues/123 --no-editor
+```
 
-
+```bash
 #Help
 repro --help
 ```
