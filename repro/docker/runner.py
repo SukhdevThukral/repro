@@ -146,6 +146,8 @@ def run_sandbox(issue: dict, runtime: dict, ports: list =None, token: str = None
     work_dir = f"/sandbox/{repo}"
     container_name = f"repro-{owner}-{repo}-{number}"
 
+    subprocess.run(["docker", "rm", "-f", container_name], capture_output=True)
+
     host_dir = tempfile.mkdtemp(prefix=f"repro-{owner}-{repo}-{number}-")
 
     print(f"📁 Sandbox files will live at: {host_dir}")
@@ -227,7 +229,11 @@ def run_sandbox(issue: dict, runtime: dict, ports: list =None, token: str = None
             return
         
         if result.returncode not in (0,130):
-            print(f"Sandbox exited with code {result.returncode} - check the output above.")
+            if result.returncode == 125:
+                print(f"\n⚠️  Docker couldn't start the container (exit 125) — this often means"
+                      f"the image failed to pull. Check your internet connection and try again.")
+            else:
+                print(f"Sandbox exited with code {result.returncode} - check the output above.")
             return
 
         print("\n Sandbox destroyed. Back to reality.")
@@ -250,12 +256,13 @@ def build_startup_script(clone_url_public, work_dir, install_cmd, issue_number, 
         f'if [ -n "$GIT_TOKEN" ]; then '
         f'CLONE_URL="https://${{GIT_TOKEN}}@{host_and_path}";'
         f'else CLONE_URL="{clone_url_public}"; fi && '
-        f'git clone --depth=1 "$CLONE_URL" {work_dir} 2>&1 | tail -5'
+        f'git clone --depth=1 "$CLONE_URL" {work_dir}'
+        f'|| (echo "❌ Clone failed — check the repo exists, the URL is correct, and your token has access." && exit 1)'
     )
 
     lines = [
         "set -e",
-        "which git > /dev/null 2>&1 || (apk add --no-cache git curl)",
+        "which git > /dev/null 2>&1 || (apk add --no-cache git curl 2>/dev/null || (apt-get update -qq && apt-get install -y -qq git  curl))",
         'echo ""',
         'echo "=================================="',
         f'echo "  Repro - Issue #{issue_number}"',
