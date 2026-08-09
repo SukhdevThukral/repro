@@ -165,7 +165,8 @@ def run_sandbox(issue: dict, runtime: dict, ports: list =None, token: str = None
             print("🖊️  Opening the folder in VS Code (editing only)...")
             print("   💡 Install the 'Dev Containers' extension for a fully unified terminal.\n")
     elif not no_editor:
-        print("💡 Tip: install VS Code's 'code' CLI command to auto-open the sandbox folder.\n")
+        print("💡 No auto-attach editor detected (currently supports VS Code :( .\n")
+        print(" Open the folder above in whatever editor you use - its a real folder on your machine!! .\n")
 
     startup_script = build_startup_script(clone_url_public, work_dir, runtime["install"], number, ports, has_token=bool(token))
 
@@ -187,7 +188,6 @@ def run_sandbox(issue: dict, runtime: dict, ports: list =None, token: str = None
 
     env_file_path = None
     if token:
-        #writing the toekn to a temp file passed via --env-fle instead of -e/embedded-in-command
         fd, env_file_path = tempfile.mkstemp(prefix="repro-", suffix=".env")
         try:
             os.chmod(env_file_path, 0o600)
@@ -247,7 +247,7 @@ def build_startup_script(clone_url_public, work_dir, install_cmd, issue_number, 
 
     host_and_path = clone_url_public[len("https://"):]
     clone_cmd = (
-        f'if [ -n "$TOKEN" ]; then '
+        f'if [ -n "$GIT_TOKEN" ]; then '
         f'CLONE_URL="https://${{GIT_TOKEN}}@{host_and_path}";'
         f'else CLONE_URL="{clone_url_public}"; fi && '
         f'git clone --depth=1 "$CLONE_URL" {work_dir} 2>&1 | tail -5'
