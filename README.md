@@ -69,10 +69,10 @@ repro --help
 
 ## What it does
 
-1. **Parses** the GitHub issue URL
-2. **Detects** the repo's runtime - Node, Python, Go, Rust, Ruby, PHP, Java, or a devcontainer, based on whats actually in the repo.
+1. **Processes** the GitHub issue URL
+2. **Detects** the repo's runtime i.e Node, Python, Go, Rust, Ruby, PHP, Java, or a devcontainer based on whats actually in the repo.
 3. **Spins up** a disposable, isolated Docker container with the right base image.
-4. **Bind-mounts** a real folder on your machine into the container, so nothing is trapped - files persist after you exit
+4. **Bind-mounts** a real folder on your machine into the container, so nothing is trapped and files persist after you exit
 5. **Clones** the repo directly into that shared folder and install dependencies
 6. **Attaches VS Code directly to the running container** (auto-installing the Dev Containers extension if needed) - one window, one terminal, running *inside* the sandbox.
 7. *Destroys* the container the moment you exit. Your edited files remain exactly where they were.
@@ -81,9 +81,9 @@ repro --help
 
 ## The unified editor experience
 
-- **Real editor** — VS Code attaches directly into the container, so its built-in terminal *is* the sandbox shell. No second window to juggle.
-- **Real persistence** — because the folder is bind-mounted, not just cloned inside the container, your work survives after `exit`. Nothing is lost.
-If VS Code isn't installed, `repro` falls back gracefully — you still get a real folder path printed at the end, ready to open in whatever editor you use.
+- **Real editor**: VS Code attaches directly into the container, so its built-in terminal *is* the sandbox shell
+- **Real persistence**: because the folder is bind-mounted, not just cloned inside the container, your work survives after `exit`.
+If VS Code isn't installed, `repro` falls back gracefully, you still get a real folder path printed at the end, ready to open in whatever editor you use.
 
 ---
 
@@ -109,7 +109,7 @@ If VS Code isn't installed, `repro` falls back gracefully — you still get a re
 
 ## The GitHub App
 
-Install [**repro-sandbox-bot**](https://github.com/apps/repro-sandbox-bot) on any repo and it automatically comments the exact `repro` command on every new issue - so contributors never have to think about setup.
+Install [**repro-sandbox-bot**](https://github.com/apps/repro-sandbox-bot) on any repo and it automatically comments the exact `repro` command on every new issue, so that contributors never have to think about setup.
 
 ```
 🏖 Open this issue in DevSandbox
